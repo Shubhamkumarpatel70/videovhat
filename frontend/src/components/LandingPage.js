@@ -35,54 +35,32 @@ const LandingPage = ({ onUserJoin, isConnected, user, onAdminLogin }) => {
     e.preventDefault();
     setIsLoading(true);
 
-    try {
-      const API = process.env.REACT_APP_API_URL || 'http://localhost:10000';
-      const response = await fetch(`${API}/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(registerData)
-      });
-
-      const data = await response.json();
-      if (response.ok) {
-        toast.success(data.message);
-        setShowOtpForm(true);
-        setOtpData({ email: registerData.email, otp: '' });
-      } else {
-        toast.error(data.message);
-      }
-    } catch (error) {
-      toast.error('Registration failed');
-    } finally {
+    // Demo flow - simulate registration without backend
+    setTimeout(() => {
+      toast.success('Registration successful. Please verify your email.');
+      setShowOtpForm(true);
+      setOtpData({ email: registerData.email, otp: '' });
       setIsLoading(false);
-    }
+    }, 1000);
   };
 
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
     setIsLoading(true);
 
-    try {
-      const API = process.env.REACT_APP_API_URL || 'http://localhost:10000';
-      const response = await fetch(`${API}/verify-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(otpData)
-      });
-
-      const data = await response.json();
-      if (response.ok) {
-        toast.success(data.message);
+    // Demo flow - simulate OTP verification
+    setTimeout(() => {
+      if (otpData.otp === '123456') {
+        toast.success('Email verified successfully!');
         setShowOtpForm(false);
         setActiveTab('login');
+        // Reset register data after successful verification
+        setRegisterData({ name: '', email: '', password: '', country: '', gender: '' });
       } else {
-        toast.error(data.message);
+        toast.error('Invalid OTP. Please try again.');
       }
-    } catch (error) {
-      toast.error('OTP verification failed');
-    } finally {
       setIsLoading(false);
-    }
+    }, 1000);
   };
 
   // Fetch testimonials on component mount
