@@ -174,10 +174,10 @@ const WaitingRoom = ({ socket, user }) => {
         socketId: socket.id
       };
       try {
-        socket.emit('user-connected', payload);
-        console.debug('Emitted user-connected', payload);
+        socket.emit('user-join', payload);
+        console.debug('Emitted user-join', payload);
       } catch (e) {
-        console.warn('Failed to emit user-connected', e);
+        console.warn('Failed to emit user-join', e);
       }
     };
 
