@@ -24,7 +24,8 @@ import {
   Zap,
   MoreVertical,
   Grid,
-  PictureInPicture
+  PictureInPicture,
+  RotateCcw
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ReactCountryFlag from 'react-country-flag';
@@ -191,6 +192,7 @@ const ChatRoom = ({ socket, user }) => {
   const [showSettings, setShowSettings] = useState(false);
   const [isRemoteVideoOn, setIsRemoteVideoOn] = useState(true);
   const [viewMode, setViewMode] = useState('pip'); // 'pip' or 'split'
+  const [facingMode, setFacingMode] = useState('user'); // 'user' or 'environment'
 
   // keep a reference to the local MediaStream so we can add/stop tracks later
   const localStreamRef = useRef(null);
@@ -339,7 +341,7 @@ const ChatRoom = ({ socket, user }) => {
   };
 
   // Ensure local media is available and attached to the peer connection.
-  const ensureLocalMedia = async () => {
+  const ensureLocalMedia = async (requestedFacingMode = facingMode) => {
     // If we already have a local stream with tracks, ensure those tracks are added to the peer connection
     if (localStreamRef.current && localStreamRef.current.getTracks().length > 0) {
       if (peerConnectionRef.current) {
@@ -358,7 +360,8 @@ const ChatRoom = ({ socket, user }) => {
       video: {
         width: { ideal: 1280 },
         height: { ideal: 720 },
-        frameRate: { ideal: 30 }
+        frameRate: { ideal: 30 },
+        facingMode: requestedFacingMode
       },
       audio: {
         echoCancellation: true,
@@ -579,6 +582,15 @@ const ChatRoom = ({ socket, user }) => {
 
   const toggleViewMode = () => {
     setViewMode(prev => prev === 'pip' ? 'split' : 'pip');
+  };
+
+  const toggleFacingMode = () => {
+    const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
+    setFacingMode(newFacingMode);
+    ensureLocalMedia(newFacingMode).catch(err => {
+      console.error('Error switching camera:', err);
+      toast.error('Could not switch camera');
+    });
   };
 
   const sendMessage = () => {
@@ -811,6 +823,15 @@ const ChatRoom = ({ socket, user }) => {
               whileTap={{ scale: 0.9 }}
             >
               {viewMode === 'pip' ? <Grid size={18} /> : <PictureInPicture size={18} />}
+            </motion.button>
+
+            <motion.button
+              onClick={toggleFacingMode}
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-200 bg-gray-100 hover:bg-gray-200 text-gray-700"
+              whileHover={{ scale: 1.1, y: -2 }}
+              whileTap={{ scale: 0.9 }}
+            >
+              <RotateCcw size={18} />
             </motion.button>
 
             <motion.button
