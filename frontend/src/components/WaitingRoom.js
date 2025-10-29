@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Globe, Clock, Video, Wifi, WifiOff, User, MapPin, Sparkles, Zap, Search, RotateCcw, Crown, Target, ArrowLeft } from 'lucide-react';
@@ -78,7 +78,6 @@ const getCountryCode = (country) => {
   return countryCodeMap[country] || '';
 };
 
-// Add same helpers at top of WaitingRoom.js
 const titleCase = (str) => {
   if (!str || typeof str !== 'string') return str || '';
   return str
@@ -93,13 +92,15 @@ const normalizeUser = (u) => {
   if (!u) return null;
   const obj = typeof u === 'string' ? { name: u } : { ...u };
   const id = obj.id || obj._id || obj.userId || obj.uid || null;
+  // capture socket id if server includes it on user objects
+  const socketId = obj.socketId || obj.socket_id || obj.socket || obj.socketid || null;
   const rawName = obj.name || obj.displayName || obj.display_name || obj.username || obj.fullName || obj.full_name || '';
   const name = titleCase(rawName);
   const email = obj.email || obj.user_email || obj.mail || '';
   const gender = obj.gender || obj.sex || '';
   const country = obj.country || obj.location || obj.countryName || '';
   const isAnonymous = obj.isAnonymous ?? obj.anonymous ?? obj.is_anonymous ?? false;
-  return { id, name, email, gender, country, isAnonymous, raw: obj };
+  return { id, socketId, name, email, gender, country, isAnonymous, raw: obj };
 };
 
 const WaitingRoom = ({ socket, user }) => {
@@ -118,6 +119,39 @@ const WaitingRoom = ({ socket, user }) => {
   const [onlineCount, setOnlineCount] = React.useState(0);
   const [onlineUsersList, setOnlineUsersList] = React.useState([]);
   const [countriesCount, setCountriesCount] = React.useState(0);
+
+  // Video & chat state
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
+  const [localStream, setLocalStream] = useState(null);
+  const [previewActive, setPreviewActive] = useState(false);
+
+  // Chat state
+  const [messages, setMessages] = useState([]);
+  const [messageInput, setMessageInput] = useState('');
+
+  // WebRTC state
+  const peerConnections = useRef({}); // keyed by remote socketId
+  const [inCallWith, setInCallWith] = useState(null); // remote socketId
+  const [muted, setMuted] = useState(false);
+
+  // Basic STUN servers (add TURN for production)
+  const rtcConfig = React.useMemo(() => ({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }), []);
+
+  // attach local tracks to a peer connection
+  const setLocalTracksToPC = (pc) => {
+    if (!pc || !localStream) return;
+    try {
+      // Remove existing senders for idempotency (optional)
+      const existingSenders = pc.getSenders ? pc.getSenders() : [];
+      localStream.getTracks().forEach(track => {
+        const has = existingSenders.some(s => s.track && s.track.kind === track.kind);
+        if (!has) pc.addTrack(track, localStream);
+      });
+    } catch (e) {
+      console.warn('Failed to set local tracks to PC', e);
+    }
+  };
 
   // normalize current user early so we can ensure lists include self
   const normalizedUser = React.useMemo(() => normalizeUser(user || {}), [user]);
@@ -162,6 +196,76 @@ const WaitingRoom = ({ socket, user }) => {
 
   useEffect(() => {
     if (!socket) return;
+
+    // WebRTC signaling handlers
+    const onOffer = async ({ from, sdp, type }) => {
+      // 'from' is caller socket id
+      if (!from) return;
+      await startPreview();
+      const pc = getOrCreatePC(from);
+      try {
+        await pc.setRemoteDescription({ type: type || 'offer', sdp });
+        setLocalTracksToPC(pc);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socket.emit('webrtc-answer', { to: from, sdp: answer.sdp, type: answer.type });
+        setInCallWith(from);
+      } catch (e) {
+        console.error('Error handling offer', e);
+      }
+    };
+
+    const onAnswer = async ({ from, sdp, type }) => {
+      if (!from) return;
+      const entry = peerConnections.current[from];
+      if (!entry) return;
+      try {
+        await entry.pc.setRemoteDescription({ type: type || 'answer', sdp });
+      } catch (e) {
+        console.error('Error applying answer', e);
+      }
+    };
+
+    const onIce = async ({ from, candidate }) => {
+      if (!from || !candidate) return;
+      const entry = peerConnections.current[from];
+      if (!entry) return;
+      try {
+        await entry.pc.addIceCandidate(candidate);
+      } catch (e) {
+        console.warn('Failed to add ICE candidate', e);
+      }
+    };
+
+    const onHangup = ({ from }) => {
+      if (!from) return;
+      hangupCall(from);
+    };
+
+    socket.on('webrtc-offer', onOffer);
+    socket.on('webrtc-answer', onAnswer);
+    socket.on('webrtc-ice-candidate', onIce);
+    socket.on('call-hangup', onHangup);
+
+    // chat handlers: receive history and new messages
+    const onHistory = (history) => {
+      const arr = Array.isArray(history) ? history.map(h => ({ ...h })) : [];
+      setMessages(arr);
+    };
+    const onMessage = (msg) => {
+      if (!msg) return;
+      setMessages(prev => [...prev, msg]);
+    };
+    socket.on('message-history', onHistory);
+    socket.on('chat-message', onMessage);
+
+    // request message history for waiting room (server should implement)
+    try { socket.emit('request-message-history'); } catch (e) {}
+
+    // automatic local preview start so users can see themselves (optional)
+    // do not force if user already has given permission; start preview quietly
+    // note: mobile browsers may block autoplay; user may need to tap to enable
+    startPreview().catch(()=>{});
 
     // Helper to send register/connect payload to server (use socket.id as fallback id)
     const sendConnected = () => {
@@ -275,6 +379,23 @@ const WaitingRoom = ({ socket, user }) => {
     }
 
     return () => {
+      // cleanup chat handlers + stops
+      socket.off('message-history', onHistory);
+      socket.off('chat-message', onMessage);
+      socket.off('webrtc-offer', onOffer);
+      socket.off('webrtc-answer', onAnswer);
+      socket.off('webrtc-ice-candidate', onIce);
+      socket.off('call-hangup', onHangup);
+      stopPreview();
+      // Close and cleanup any remaining peer connections
+      try {
+        Object.keys(peerConnections.current || {}).forEach(k => {
+          const e = peerConnections.current[k];
+          try { e.pc && e.pc.close(); } catch (err) {}
+          try { e.remoteStream && e.remoteStream.getTracks().forEach(t => t.stop()); } catch(err){}
+          delete peerConnections.current[k];
+        });
+      } catch (err) { console.warn('Error cleaning peerConnections', err); }
       socket.off('connect', sendConnected);
       socket.off('disconnect', handleDisconnect);
       socket.off('user-list-updated');
@@ -342,340 +463,194 @@ const WaitingRoom = ({ socket, user }) => {
     }
   };
 
+  // start local preview (safe: only request when user allows)
+  const startPreview = async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      setLocalStream(s);
+      if (localVideoRef.current) localVideoRef.current.srcObject = s;
+      setPreviewActive(true);
+    } catch (err) {
+      console.warn('getUserMedia failed', err);
+      toast.error('Unable to access camera/microphone');
+    }
+  };
+
+  const stopPreview = () => {
+    if (localStream) {
+      localStream.getTracks().forEach(t => t.stop());
+      setLocalStream(null);
+      if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    }
+    setPreviewActive(false);
+  };
+
+  // create or get existing PeerConnection for a remote
+  const getOrCreatePC = (remoteSocketId) => {
+    if (!remoteSocketId) return null;
+    if (peerConnections.current[remoteSocketId]) return peerConnections.current[remoteSocketId].pc;
+    const pc = new RTCPeerConnection(rtcConfig);
+    const remoteStream = new MediaStream();
+    // attach tracks from remote
+    pc.ontrack = (ev) => {
+      ev.streams?.[0] && ev.streams[0].getTracks().forEach(t => remoteStream.addTrack(t));
+      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
+    };
+    pc.onicecandidate = (ev) => {
+      if (ev.candidate) {
+        try {
+          socket.emit('webrtc-ice-candidate', { to: remoteSocketId, candidate: ev.candidate });
+        } catch (e) { console.warn(e); }
+      }
+    };
+    peerConnections.current[remoteSocketId] = { pc, remoteStream };
+    return pc;
+  };
+
+  // start call to a remote user (must have socketId)
+  const initiateCall = async (remoteUser) => {
+    const targetSocketId = remoteUser.socketId || remoteUser.raw?.socketId || remoteUser.raw?.socket_id;
+    if (!targetSocketId) {
+      toast.error('Cannot call: user has no socket id');
+      return;
+    }
+    await startPreview(); // ensure local stream present
+    const pc = getOrCreatePC(targetSocketId);
+    // add local tracks
+    setLocalTracksToPC(pc);
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socket.emit('webrtc-offer', { to: targetSocketId, sdp: offer.sdp, type: offer.type });
+      setInCallWith(targetSocketId);
+    } catch (e) {
+      console.error('Failed to create/send offer', e);
+      toast.error('Call failed');
+    }
+  };
+
+  const hangupCall = (remoteSocketId) => {
+    const key = remoteSocketId || inCallWith;
+    if (!key) return;
+    const entry = peerConnections.current[key];
+    if (entry) {
+      try { entry.pc.close(); } catch (e) { /* ignore */ }
+      try { entry.remoteStream && entry.remoteStream.getTracks().forEach(t => t.stop()); } catch(e){}
+      delete peerConnections.current[key];
+    }
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    setInCallWith(null);
+    try { socket.emit('call-hangup', { to: key }); } catch (e) { console.warn(e); }
+  };
+
   return (
-    <div className="min-h-screen flex flex-col p-4 sm:p-8 relative overflow-hidden bg-gray-100">
-  <div className="max-w-6xl w-full mx-auto mt-6 relative z-10 flex flex-col gap-8">
-
-        {/* Header */}
-        <motion.div
-          className="text-center space-y-6"
-          initial={{ opacity: 0, y: -50 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, type: "spring" }}
-        >
-          <motion.div
-            className="flex justify-center items-center gap-3"
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.5, type: "spring" }}
-          >
-            <div className="p-4 bg-blue-600 rounded-2xl shadow-lg">
-              <Crown size={32} className="text-white" />
-            </div>
-          </motion.div>
-
-          <h1 className="text-5xl lg:text-7xl font-bold text-gray-900 leading-tight">
-            <span className="text-blue-600">
-              Welcome to
-            </span>
-            <br />
-            <span className="text-blue-800">
-              VideoChat!
-            </span>
-          </h1>
-
-          <motion.p
-            className="text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.3 }}
-          >
-            You're now in the waiting room. Find someone amazing to chat with from around the world!
-          </motion.p>
-        </motion.div>
-
-        <div className="grid lg:grid-cols-3 gap-8">
-          {/* Left Column - User Info */}
-          <motion.div
-            className="lg:col-span-1 space-y-6"
-            initial={{ opacity: 0, x: -50 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-          >
-            {/* User Profile Card */}
-            <motion.div
-              className="bg-white rounded-2xl p-6 relative overflow-hidden shadow-lg border border-gray-200"
-              whileHover={{ scale: 1.02 }}
-              transition={{ duration: 0.3 }}
-            >
-              <div className="relative space-y-4 text-center">
-                <motion.div
-                  className="w-24 h-24 mx-auto bg-blue-600 rounded-full flex items-center justify-center relative"
-                  {...floatingAnimation}
-                >
-                  <User size={40} className="text-white" />
-                </motion.div>
-
-                <div>
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2">
-                    {normalizedUser?.isAnonymous ? 'Anonymous User' : normalizedUser?.name}
-                  </h3>
-
-                  <div className="flex flex-col gap-2 items-center">
-                    {normalizedUser?.gender && (
-                      <motion.div
-                        className="flex items-center gap-2 text-gray-700 bg-gray-100 px-3 py-1 rounded-full"
-                        whileHover={{ scale: 1.05 }}
-                      >
-                        <Users size={14} />
-                        <span className="capitalize text-sm">{normalizedUser.gender}</span>
-                      </motion.div>
-                    )}
-                    {normalizedUser?.country && (
-                      <motion.div
-                        className="flex items-center gap-2 text-gray-700 bg-gray-100 px-3 py-1 rounded-full"
-                        whileHover={{ scale: 1.05 }}
-                      >
-                        <ReactCountryFlag
-                          countryCode={getCountryCode(normalizedUser.country)}
-                          svg
-                          style={{
-                            width: '16px',
-                            height: '12px',
-                          }}
-                        />
-                        <span className="text-sm">{normalizedUser.country}</span>
-                      </motion.div>
-                    )}
-                  </div>
+    <div className="waiting-room">
+      <Header />
+      <div className="content">
+        <div className="user-info">
+          <div className="avatar">
+            <ReactCountryFlag countryCode={getCountryCode(user?.country)} svg style={{ width: '100%', height: '100%' }} />
+          </div>
+          <div className="details">
+            <h2>{user ? user.name : 'Guest'}</h2>
+            <p>{user ? user.email : 'Not logged in'}</p>
+            <p>{user ? user.country : 'Unknown location'}</p>
+          </div>
+        </div>
+        <div className="actions">
+          <button onClick={handleFindMatch} disabled={isSearching}>
+            {isSearching ? 'Searching...' : 'Find a Match'}
+          </button>
+          <button onClick={handleCancelSearch} disabled={!isSearching}>
+            Cancel Search
+          </button>
+          <button onClick={handleBack}>
+            <ArrowLeft /> Back
+          </button>
+        </div>
+        <div className="stats">
+          <div className="stat-item">
+            <Users />
+            <span>{stats.totalUsers}</span>
+          </div>
+          <div className="stat-item">
+            <Globe />
+            <span>{stats.countries}</span>
+          </div>
+          <div className="stat-item">
+            <Clock />
+            <span>{formatTime(searchCountdown)}</span>
+          </div>
+        </div>
+        <div className="online-users">
+          <h3>Online Users</h3>
+          <div className="user-list">
+            {onlineUsers.map((u, idx) => (
+              <motion.div key={u.id || idx} className="user-item" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <div className="avatar">
+                  <ReactCountryFlag countryCode={getCountryCode(u.country)} svg style={{ width: '100%', height: '100%' }} />
                 </div>
-              </div>
-            </motion.div>
-
-            {/* Quick Stats */}
-            <motion.div
-              className="bg-white rounded-2xl p-6 shadow-lg border border-gray-200"
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-            >
-              <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <Sparkles size={18} className="text-blue-600" />
-                Quick Stats
-              </h4>
-
-              <div className="space-y-3">
-                <div className="flex justify-between items-center text-gray-700">
-                  <span>Your Status</span>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    <span className="text-green-600 text-sm">Online</span>
-                  </div>
+                <div className="info">
+                  <h4>{u.name}</h4>
+                  <p>{u.country}</p>
                 </div>
-
-                <div className="flex justify-between items-center text-gray-700">
-                  <span>Search Time</span>
-                  <span className="text-blue-600 font-mono">{isSearching ? `${searchCountdown}s` : '0:00'}</span>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-
-          {/* Right Column - Main Content */}
-          <motion.div
-            className="lg:col-span-2 space-y-6"
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.8, delay: 0.3 }}
-          >
-            {/* Stats Grid */}
-            <motion.div
-              className="grid grid-cols-1 md:grid-cols-3 gap-6"
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.4 }}
-            >
-              {[
-                {
-                  icon: Users,
-                  value: onlineCount,
-                  label: 'Online Now',
-                  color: 'bg-blue-600',
-                  description: 'Active users'
-                },
-                {
-                  icon: Globe,
-                  value: countriesCount,
-                  label: 'Countries',
-                  color: 'bg-green-600',
-                  description: 'Global reach'
-                }
-              ].map((stat, index) => (
-                <motion.div
-                  key={index}
-                  className="bg-white rounded-2xl p-6 text-center relative overflow-hidden shadow-lg border border-gray-200 group"
-                  whileHover={{ scale: 1.05, y: -5 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  <motion.div
-                    className={`w-16 h-16 mx-auto ${stat.color} rounded-2xl flex items-center justify-center mb-4 relative`}
-                    {...floatingAnimation}
-                  >
-                    <stat.icon size={28} className="text-white" />
-                  </motion.div>
-
-                  <div className="text-3xl font-bold text-gray-900 mb-2">{stat.value}</div>
-                  <div className="text-gray-900 font-semibold mb-1">{stat.label}</div>
-                  <div className="text-gray-600 text-sm">{stat.description}</div>
-                </motion.div>
-              ))}
-            </motion.div>
-
-            {/* Online Users */}
-            {onlineUsers.length > 0 && (
-              <motion.div
-                className="bg-white rounded-2xl p-6 shadow-lg border border-gray-200"
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.5 }}
-              >
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                    <Users size={20} className="text-blue-600" />
-                    Online Users
-                  </h3>
-                  <div className="flex items-center gap-2 text-green-600 text-sm">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    <span>{onlineCount} active</span>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-3 justify-center">
-                  {onlineUsers.slice(0, 5).map((user, index) => (
-                    <motion.div
-                      key={index}
-                      className="bg-gray-100 px-4 py-2 rounded-full text-gray-700 text-sm flex items-center gap-2 border border-gray-200 hover:border-blue-300 transition-all duration-300"
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                    >
-                      <motion.div
-                        className="w-2 h-2 bg-green-500 rounded-full"
-                        {...pulseAnimation}
-                      />
-                      {user.isAnonymous || !user.name ? (
-                        <span className="text-gray-600">Anonymous</span>
-                      ) : (
-                        // show masked name to avoid revealing full identity
-                        <span>{maskName(user.name)}</span>
-                      )}
-                    </motion.div>
-                  ))}
-                  {onlineUsers.length > 5 && (
-                    <div className="bg-gray-100 px-4 py-2 rounded-full text-gray-600 text-sm border border-gray-200">
-                      +{onlineUsers.length - 5} more
-                    </div>
-                  )}
+                <div className="actions">
+                  <button onClick={() => initiateCall(u)} disabled={inCallWith !== null}>
+                    <Video />
+                  </button>
                 </div>
               </motion.div>
-            )}
-
-            {/* Search Section */}
-            <motion.div
-              className="bg-white rounded-2xl p-8 text-center shadow-lg border border-gray-200"
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.6 }}
-            >
-              <AnimatePresence mode="wait">
-                {!isSearching ? (
-                  <motion.div
-                    key="ready"
-                    className="space-y-6"
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                  >
-                    <motion.div
-                      className="w-20 h-20 mx-auto bg-green-600 rounded-2xl flex items-center justify-center"
-                      {...floatingAnimation}
-                    >
-                      <Target size={32} className="text-white" />
-                    </motion.div>
-
-                    <div>
-                      <h3 className="text-2xl font-bold text-gray-900 mb-2">
-                        Ready to Connect?
-                      </h3>
-                      <p className="text-gray-600">
-                        Find someone amazing to chat with from around the world
-                      </p>
-                    </div>
-
-                    <motion.button
-                      onClick={handleFindMatch}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-semibold flex items-center justify-center gap-3 mx-auto transition-colors duration-200"
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      disabled={onlineCount < 2}
-                    >
-                      <Search size={20} />
-                      <span>{onlineCount < 2 ? 'Waiting for more users...' : 'Find a Match'}</span>
-                    </motion.button>
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key="searching"
-                    className="space-y-6"
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                  >
-                    <motion.div
-                      className="w-20 h-20 mx-auto border-4 border-blue-600 border-t-transparent rounded-full flex items-center justify-center"
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                    >
-                      <Zap size={32} className="text-blue-600" />
-                    </motion.div>
-
-                    <div>
-                      <h3 className="text-2xl font-bold text-gray-900 mb-2">
-                        Finding Your Match...
-                      </h3>
-                      <p className="text-gray-600 mb-2">
-                        Searching through {onlineCount} online users
-                      </p>
-                      <div className="text-blue-600 font-mono text-lg">
-                        {searchCountdown}s remaining
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3 justify-center">
-                      <motion.button
-                        onClick={handleCancelSearch}
-                        className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-6 py-2 rounded-xl font-semibold flex items-center gap-2 transition-colors duration-200"
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                      >
-                        <RotateCcw size={16} />
-                        Cancel
-                      </motion.button>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
-
-            {/* Back Button */}
-            <motion.div
-              className="text-center"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.8 }}
-            >
-              <motion.button
-                onClick={handleBack}
-                className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-6 py-2 rounded-xl font-semibold flex items-center gap-2 mx-auto transition-colors duration-200"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                <ArrowLeft size={18} />
-                Go Back
-              </motion.button>
-            </motion.div>
-          </motion.div>
+            ))}
+          </div>
+        </div>
+        <div className="chat">
+          <div className="messages">
+            {messages.map((msg, idx) => (
+              <div key={idx} className={`message ${msg.fromMe ? 'from-me' : 'from-them'}`}>
+                <div className="avatar">
+                  <ReactCountryFlag countryCode={getCountryCode(msg.sender?.country)} svg style={{ width: '100%', height: '100%' }} />
+                </div>
+                <div className="bubble">
+                  <div className="info">
+                    <span className="name">{msg.sender?.name || 'Unknown'}</span>
+                    <span className="time">{formatTime(msg.timestamp)}</span>
+                  </div>
+                  <div className="text">{msg.text}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="input-area">
+            <input
+              type="text"
+              value={messageInput}
+              onChange={(e) => setMessageInput(e.target.value)}
+              placeholder="Type your message..."
+            />
+            <button onClick={sendMessage}>
+              <PaperPlane />
+            </button>
+          </div>
         </div>
       </div>
+      <div className="video-preview" style={{ display: previewActive ? 'block' : 'none' }}>
+        <video ref={localVideoRef} autoPlay muted />
+      </div>
+      <div className="remote-video" style={{ display: inCallWith ? 'block' : 'none' }}>
+        <video ref={remoteVideoRef} autoPlay />
+      </div>
+      <AnimatePresence>
+        {isSearching && (
+          <motion.div className="searching-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <div className="spinner">
+              <div className="double-bounce1"></div>
+              <div className="double-bounce2"></div>
+            </div>
+            <p>Searching for a match...</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
