@@ -296,7 +296,7 @@ function App() {
       if (!socket || !u) return;
       try {
         const normalized = normalizeUser(u);
-        socket.emit('user-joined', {
+        socket.emit('user-join', {
           id: normalized.id,
           name: normalized.name,
           email: normalized.email,
