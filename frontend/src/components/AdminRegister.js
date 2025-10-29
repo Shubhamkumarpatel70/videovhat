@@ -11,7 +11,7 @@ export default function AdminRegister({ onRegister }) {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+  const API = process.env.REACT_APP_API_URL || 'http://localhost:10000';
 
   const sendOtp = async () => {
     if (!email) {

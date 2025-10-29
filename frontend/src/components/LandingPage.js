@@ -36,7 +36,8 @@ const LandingPage = ({ onUserJoin, isConnected, user, onAdminLogin }) => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:5000/register', {
+      const API = process.env.REACT_APP_API_URL || 'http://localhost:10000';
+      const response = await fetch(`${API}/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(registerData)
@@ -62,7 +63,8 @@ const LandingPage = ({ onUserJoin, isConnected, user, onAdminLogin }) => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:5000/verify-otp', {
+      const API = process.env.REACT_APP_API_URL || 'http://localhost:10000';
+      const response = await fetch(`${API}/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(otpData)
@@ -87,7 +89,8 @@ const LandingPage = ({ onUserJoin, isConnected, user, onAdminLogin }) => {
   useEffect(() => {
     const fetchTestimonials = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/testimonials');
+        const API = process.env.REACT_APP_API_URL || 'http://localhost:10000';
+        const response = await fetch(`${API}/api/testimonials`);
         if (response.ok) {
           const data = await response.json();
           setTestimonials(data);
@@ -117,7 +120,8 @@ const LandingPage = ({ onUserJoin, isConnected, user, onAdminLogin }) => {
   useEffect(() => {
     const fetchMaintenance = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/maintenance');
+        const API = process.env.REACT_APP_API_URL || 'http://localhost:10000';
+        const response = await fetch(`${API}/api/maintenance`);
         if (response.ok) {
           const data = await response.json();
           setMaintenance(data);
@@ -135,7 +139,8 @@ const LandingPage = ({ onUserJoin, isConnected, user, onAdminLogin }) => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:5000/login', {
+      const API = process.env.REACT_APP_API_URL || 'http://localhost:10000';
+      const response = await fetch(`${API}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(loginData)
