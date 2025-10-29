@@ -20,6 +20,7 @@ import HelpSupport from './components/HelpSupport';
 import Support from './pages/Support';
 import NoInternet from './components/NoInternet';
 import NotFound from './components/NotFound';
+import MaintenancePage from './components/MaintenancePage';
 
 
 // Hooks
@@ -33,6 +34,7 @@ function App() {
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [maintenance, setMaintenance] = useState(null);
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -57,6 +59,23 @@ function App() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
+  }, []);
+
+  // Fetch maintenance status on app load
+  useEffect(() => {
+    const fetchMaintenance = async () => {
+      try {
+        const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+        const response = await fetch(`${API}/api/admin/maintenance`);
+        if (response.ok) {
+          const data = await response.json();
+          setMaintenance(data);
+        }
+      } catch (error) {
+        console.error('Error fetching maintenance status:', error);
+      }
+    };
+    fetchMaintenance();
   }, []);
 
   // Initialize socket connection with better error handling
@@ -349,6 +368,8 @@ function App() {
         <Header user={user} onLogout={handleLogout} />
         {!isOnline ? (
           <NoInternet />
+        ) : maintenance && (maintenance.isActive || (maintenance.scheduledFrom && maintenance.scheduledTo && new Date() >= new Date(maintenance.scheduledFrom) && new Date() <= new Date(maintenance.scheduledTo))) && !adminUser ? (
+          <MaintenancePage maintenance={maintenance} />
         ) : (
           <Routes>
             <Route

@@ -13,7 +13,7 @@
 - [ ] Add "Maintenance" tab to AdminDashboard.js navigation
 - [ ] Create maintenance tab content with toggle and scheduling form
 - [ ] Create MaintenancePage.js component
-- [ ] Modify App.js to check maintenance status and show maintenance page when active
+- [x] Modify App.js to check maintenance status and show maintenance page when active
 
 ## Testing
 
