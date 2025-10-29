@@ -98,7 +98,7 @@ const LandingPage = ({ onUserJoin, isConnected, user, onAdminLogin }) => {
   useEffect(() => {
     const fetchMaintenance = async () => {
       try {
-        const API = process.env.REACT_APP_API_URL || 'http://localhost:10000';
+        const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
         const response = await fetch(`${API}/api/maintenance`);
         if (response.ok) {
           const data = await response.json();

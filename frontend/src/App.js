@@ -65,7 +65,7 @@ function App() {
   useEffect(() => {
     const fetchMaintenance = async () => {
       try {
-        const API = process.env.REACT_APP_API_URL || 'http://localhost:10000';
+        const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
         const response = await fetch(`${API}/api/admin/maintenance`);
         if (response.ok) {
           const data = await response.json();
@@ -80,7 +80,7 @@ function App() {
 
   // Initialize socket connection with better error handling
   useEffect(() => {
-    const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || 'http://localhost:10000';
+    const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000';
     const currentToken = localStorage.getItem('token');
 
     console.log('🔌 Connecting to socket server:', SOCKET_URL);
