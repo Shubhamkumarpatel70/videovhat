@@ -322,24 +322,26 @@ const LandingPage = ({ onUserJoin, isConnected, user, onAdminLogin }) => {
           {!user ? (
             <div className="space-y-4 lg:space-y-6 px-6 pb-6">
               {/* Tab Navigation */}
-              <div className="flex bg-gray-100 rounded-lg p-1">
-                <button
-                  onClick={() => setActiveTab('login')}
-                  className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
-                    activeTab === 'login' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  Login
-                </button>
-                <button
-                  onClick={() => setActiveTab('register')}
-                  className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
-                    activeTab === 'register' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  Register
-                </button>
-              </div>
+              {!showOtpForm && (
+                <div className="flex bg-gray-100 rounded-lg p-1">
+                  <button
+                    onClick={() => setActiveTab('login')}
+                    className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+                      activeTab === 'login' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    Login
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('register')}
+                    className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+                      activeTab === 'register' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    Register
+                  </button>
+                </div>
+              )}
 
               {/* OTP Verification Form */}
               {showOtpForm && (
