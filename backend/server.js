@@ -137,6 +137,19 @@ const transporter = nodemailer.createTransport({
   }
 });
 
+// Root route
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Video Chat API is running',
+    version: '1.0.0',
+    endpoints: {
+      auth: ['/register', '/login', '/verify-otp'],
+      admin: ['/api/admin/*'],
+      public: ['/api/testimonials', '/api/maintenance', '/api/support']
+    }
+  });
+});
+
 // Authentication middleware
 const authenticateToken = (req, res, next) => {
   const token = req.header('Authorization')?.split(' ')[1];
