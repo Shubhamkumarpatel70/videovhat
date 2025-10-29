@@ -5,6 +5,7 @@ import { Users, Globe, Clock, Video, Wifi, WifiOff, User, MapPin, Sparkles, Zap,
 import toast from 'react-hot-toast';
 import ReactCountryFlag from 'react-country-flag';
 import Header from './Header';
+import './WaitingRoom.css';
 
 // Utility function to mask names
 const maskName = (name) => {
