@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Globe, Clock, Video, Wifi, WifiOff, User, MapPin, Sparkles, Zap, Search, RotateCcw, Crown, Target, ArrowLeft } from 'lucide-react';
+import { Users, Globe, Clock, Video, Wifi, WifiOff, User, MapPin, Sparkles, Zap, Search, RotateCcw, Crown, Target, ArrowLeft, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ReactCountryFlag from 'react-country-flag';
 import Header from './Header';
@@ -544,6 +544,25 @@ const WaitingRoom = ({ socket, user }) => {
     try { socket.emit('call-hangup', { to: key }); } catch (e) { console.warn(e); }
   };
 
+  const sendMessage = () => {
+    if (!messageInput.trim()) return;
+
+    const local = normalizeUser(user) || {};
+
+    const messageData = {
+      text: messageInput,
+      sender: local.name || (user && user.name) || (user && user.username) || 'You',
+      senderId: local.id || user?.id,
+      timestamp: new Date().toISOString(),
+      country: local.country || user?.country || '',
+      isAnonymous: local.isAnonymous ?? false
+    };
+
+    socket.emit('chat-message', messageData);
+    setMessages(prev => [...prev, messageData]);
+    setMessageInput('');
+  };
+
   return (
     <div className="waiting-room">
       <Header />
@@ -629,7 +648,7 @@ const WaitingRoom = ({ socket, user }) => {
               placeholder="Type your message..."
             />
             <button onClick={sendMessage}>
-              <PaperPlane />
+              <Send />
             </button>
           </div>
         </div>
