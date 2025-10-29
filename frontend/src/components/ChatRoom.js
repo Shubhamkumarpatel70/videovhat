@@ -215,9 +215,10 @@ const ChatRoom = ({ socket, user }) => {
     scrollToBottom();
   }, [messages]);
 
-  // Call timer effect
+  // Call timer effect - start when user joins chat
   useEffect(() => {
-    if (isConnected) {
+    if (matchedUser && socketConnected) {
+      // Start timer when matched and socket connected
       callTimerRef.current = setInterval(() => {
         setCallDuration(prev => prev + 1);
       }, 1000);
@@ -228,7 +229,7 @@ const ChatRoom = ({ socket, user }) => {
         clearInterval(callTimerRef.current);
       }
     };
-  }, [isConnected]);
+  }, [matchedUser, socketConnected]);
 
   useEffect(() => {
     if (!socket || !roomId) {
@@ -548,12 +549,31 @@ const ChatRoom = ({ socket, user }) => {
   };
 
   const toggleAudio = () => {
-    if (localVideoRef.current?.srcObject) {
-      const audioTrack = localVideoRef.current.srcObject.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        setIsAudioOn(audioTrack.enabled);
-      }
+    // If no local audio track exists, request media (user wants to start their microphone)
+    const localStream = localStreamRef.current || localVideoRef.current?.srcObject;
+    if (!localStream || localStream.getAudioTracks().length === 0) {
+      ensureLocalMedia().then((stream) => {
+        const aTrack = stream.getAudioTracks()[0];
+        if (aTrack) {
+          setIsAudioOn(true);
+        }
+      }).catch((err) => {
+        // show permission modal if permission denied
+        const name = err?.name || '';
+        if (name === 'NotAllowedError' || name === 'PermissionDenied') {
+          setPermissionErrorMsg(err.message || 'Microphone permission denied.');
+          setPermissionModalVisible(true);
+        } else {
+          toast.error('Could not access microphone');
+        }
+      });
+      return;
+    }
+
+    const audioTrack = localStream.getAudioTracks()[0];
+    if (audioTrack) {
+      audioTrack.enabled = !audioTrack.enabled;
+      setIsAudioOn(audioTrack.enabled);
     }
   };
 
@@ -699,71 +719,68 @@ const ChatRoom = ({ socket, user }) => {
 
       {/* Header */}
       <motion.div
-        className="bg-white px-6 py-4 flex justify-between items-center border-b border-gray-200 shadow-lg relative z-10"
+        className="bg-white px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-200 shadow-lg relative z-10"
         initial={{ y: -50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.5 }}
       >
-        <div className="flex items-center gap-4 text-gray-900">
+        <div className="flex items-center gap-3 sm:gap-4 text-gray-900 min-w-0 flex-1">
           <motion.div
-            className="relative"
+            className="relative flex-shrink-0"
             whileHover={{ scale: 1.1 }}
             transition={{ duration: 0.2 }}
           >
-            <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-lg">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-bold text-lg sm:text-xl shadow-lg">
               {avatarInitial}
             </div>
-            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white"></div>
+            <div className="absolute -bottom-1 -right-1 w-3 h-3 sm:w-4 sm:h-4 bg-green-400 rounded-full border-2 border-white"></div>
           </motion.div>
 
-          <div>
-            {/* Replace the header name block with the following (keeps most existing markup) */}
-            <div>
-              <h3 className="text-xl font-bold flex flex-col gap-1 text-gray-900">
-                <span className="flex items-center gap-2">
-                  {matchedIsAnonymous ? 'Anonymous User' : matchedDisplayName}
-                  <Shield size={16} className="text-blue-600" />
-                </span>
-                <span className="text-sm text-gray-500">
-                  {matchedUser?.email ? matchedUser.email : ''}
-                  {matchedUser?.email && matchedUser?.gender ? ' • ' : ''}
-                  {matchedUser?.gender ? titleCase(matchedUser.gender) : ''}
-                </span>
-              </h3>
-              <div className="flex items-center gap-3 text-sm text-gray-600">
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  <span>Connected • {formatDuration(callDuration)}</span>
-                </div>
-                {matchedUser?.country && (
-                  (() => {
-                    const code = getCountryCode(matchedUser.country);
-                    return (
-                      <div className="flex items-center gap-1">
-                        {code ? (
-                          <ReactCountryFlag
-                            countryCode={code}
-                            svg
-                            style={{ width: '18px', height: '12px' }}
-                            title={matchedUser.country}
-                          />
-                        ) : (
-                          <Globe size={12} />
-                        )}
-                        <span>{matchedUser.country}</span>
-                      </div>
-                    );
-                  })()
-                )}
+          <div className="min-w-0 flex-1">
+            <h3 className="text-lg sm:text-xl font-bold flex flex-col gap-1 text-gray-900 truncate">
+              <span className="flex items-center gap-2">
+                <span className="truncate">{matchedIsAnonymous ? 'Anonymous User' : matchedDisplayName}</span>
+                <Shield size={14} className="text-blue-600 flex-shrink-0" />
+              </span>
+              <span className="text-xs sm:text-sm text-gray-500 truncate">
+                {matchedUser?.email ? matchedUser.email : ''}
+                {matchedUser?.email && matchedUser?.gender ? ' • ' : ''}
+                {matchedUser?.gender ? titleCase(matchedUser.gender) : ''}
+              </span>
+            </h3>
+            <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm text-gray-600">
+              <div className="flex items-center gap-1">
+                <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="whitespace-nowrap">Live • {formatDuration(callDuration)}</span>
               </div>
+              {matchedUser?.country && (
+                (() => {
+                  const code = getCountryCode(matchedUser.country);
+                  return (
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {code ? (
+                        <ReactCountryFlag
+                          countryCode={code}
+                          svg
+                          style={{ width: '14px', height: '10px' }}
+                          title={matchedUser.country}
+                        />
+                      ) : (
+                        <Globe size={10} />
+                      )}
+                      <span className="hidden sm:inline truncate">{matchedUser.country}</span>
+                    </div>
+                  );
+                })()
+              )}
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Server Connection Status (socket) */}
+        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+          {/* Server Connection Status (socket) - Hidden on very small screens */}
           <motion.div
-            className={`flex items-center gap-2 px-3 py-2 rounded-full text-sm ${
+            className={`hidden sm:flex items-center gap-2 px-2 sm:px-3 py-1 sm:py-2 rounded-full text-xs sm:text-sm ${
               socketConnected
                 ? 'bg-green-100 text-green-700 border border-green-200'
                 : 'bg-red-100 text-red-700 border border-red-200'
@@ -772,33 +789,33 @@ const ChatRoom = ({ socket, user }) => {
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
           >
-            {socketConnected ? <Wifi size={16} /> : <WifiOff size={16} />}
-            <span>{socketConnected ? 'Server Connected' : 'Connecting to Server'}</span>
+            {socketConnected ? <Wifi size={14} /> : <WifiOff size={14} />}
+            <span className="hidden md:inline">{socketConnected ? 'Server Connected' : 'Connecting'}</span>
           </motion.div>
 
-          {/* Control Buttons */}
-          <div className="flex gap-2">
+          {/* Control Buttons - Responsive sizing */}
+          <div className="flex gap-1 sm:gap-2">
             <motion.button
               onClick={handleBack}
-              className="w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-200 bg-gray-100 hover:bg-gray-200 text-gray-700"
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-200 bg-gray-100 hover:bg-gray-200 text-gray-700"
               whileHover={{ scale: 1.1, y: -2 }}
               whileTap={{ scale: 0.9 }}
             >
-              <ArrowLeft size={20} />
+              <ArrowLeft size={18} />
             </motion.button>
 
             <motion.button
               onClick={toggleViewMode}
-              className="w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-200 bg-gray-100 hover:bg-gray-200 text-gray-700"
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-200 bg-gray-100 hover:bg-gray-200 text-gray-700"
               whileHover={{ scale: 1.1, y: -2 }}
               whileTap={{ scale: 0.9 }}
             >
-              {viewMode === 'pip' ? <Grid size={20} /> : <PictureInPicture size={20} />}
+              {viewMode === 'pip' ? <Grid size={18} /> : <PictureInPicture size={18} />}
             </motion.button>
 
             <motion.button
               onClick={toggleVideo}
-              className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-200 ${
+              className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-200 ${
                 isVideoOn
                   ? 'bg-green-600 hover:bg-green-700 text-white'
                   : 'bg-red-600 hover:bg-red-700 text-white'
@@ -806,12 +823,12 @@ const ChatRoom = ({ socket, user }) => {
               whileHover={{ scale: 1.1, y: -2 }}
               whileTap={{ scale: 0.9 }}
             >
-              {isVideoOn ? <Video size={20} /> : <VideoOff size={20} />}
+              {isVideoOn ? <Video size={18} /> : <VideoOff size={18} />}
             </motion.button>
 
             <motion.button
               onClick={toggleAudio}
-              className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-200 ${
+              className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-200 ${
                 isAudioOn
                   ? 'bg-green-600 hover:bg-green-700 text-white'
                   : 'bg-red-600 hover:bg-red-700 text-white'
@@ -819,16 +836,16 @@ const ChatRoom = ({ socket, user }) => {
               whileHover={{ scale: 1.1, y: -2 }}
               whileTap={{ scale: 0.9 }}
             >
-              {isAudioOn ? <Mic size={20} /> : <MicOff size={20} />}
+              {isAudioOn ? <Mic size={18} /> : <MicOff size={18} />}
             </motion.button>
 
             <motion.button
               onClick={endCall}
-              className="w-12 h-12 bg-red-600 hover:bg-red-700 rounded-2xl flex items-center justify-center text-white transition-all duration-200"
+              className="w-10 h-10 sm:w-12 sm:h-12 bg-red-600 hover:bg-red-700 rounded-xl sm:rounded-2xl flex items-center justify-center text-white transition-all duration-200"
               whileHover={{ scale: 1.1, y: -2 }}
               whileTap={{ scale: 0.9 }}
             >
-              <Phone size={20} />
+              <Phone size={18} />
             </motion.button>
           </div>
         </div>
