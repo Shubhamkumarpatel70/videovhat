@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 export default function Support() {
   const [supportRequests, setSupportRequests] = useState([]);
   const [loading, setLoading] = useState(true);
-  const API = process.env.REACT_APP_API_URL || 'http://localhost:10000';
+  const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
   useEffect(() => {
     fetchSupportRequests();

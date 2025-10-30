@@ -3,7 +3,7 @@ import axios from 'axios';
 import './AdminDashboard.css';
 
 const AdminDashboard = ({ adminUser, onLogout }) => {
-  const API = process.env.REACT_APP_API_URL || 'http://localhost:10000';
+  const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
   const [activeTab, setActiveTab] = useState('home');
   const [users, setUsers] = useState([]);
   const [restrictedWords, setRestrictedWords] = useState([]);

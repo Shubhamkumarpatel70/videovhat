@@ -67,7 +67,7 @@ const LandingPage = ({ onUserJoin, isConnected, user, onAdminLogin }) => {
   useEffect(() => {
     const fetchTestimonials = async () => {
       try {
-        const API = process.env.REACT_APP_API_URL || 'http://localhost:10000';
+        const API = process.env.REACT_APP_API_URL || 'https://videovhatbackend.onrender.com';
         const response = await fetch(`${API}/api/testimonials`);
         if (response.ok) {
           const data = await response.json();
@@ -98,7 +98,7 @@ const LandingPage = ({ onUserJoin, isConnected, user, onAdminLogin }) => {
   useEffect(() => {
     const fetchMaintenance = async () => {
       try {
-        const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+        const API = process.env.REACT_APP_API_URL || 'https://videovhatbackend.onrender.com';
         const response = await fetch(`${API}/api/maintenance`);
         if (response.ok) {
           const data = await response.json();
@@ -117,7 +117,7 @@ const LandingPage = ({ onUserJoin, isConnected, user, onAdminLogin }) => {
     setIsLoading(true);
 
     try {
-      const API = process.env.REACT_APP_API_URL || 'http://localhost:10000';
+      const API = process.env.REACT_APP_API_URL || 'https://videovhatbackend.onrender.com';
       const response = await fetch(`${API}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
