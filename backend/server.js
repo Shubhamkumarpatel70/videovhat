@@ -134,13 +134,17 @@ const maintenanceSchema = new mongoose.Schema({
 const Maintenance = mongoose.model('Maintenance', maintenanceSchema);
 
 // Nodemailer transporter
-// For Gmail, you may need to enable "Less secure app access" or use an "App Password"
-// See: https://support.google.com/accounts/answer/6010255
+// For production, using Gmail SMTP with proper configuration
 const transporter = nodemailer.createTransport({
-  service: 'gmail', // or your email service
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false, // true for 465, false for other ports
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
+  },
+  tls: {
+    rejectUnauthorized: false
   }
 });
 
