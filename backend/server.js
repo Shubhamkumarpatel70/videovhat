@@ -129,6 +129,8 @@ const maintenanceSchema = new mongoose.Schema({
 const Maintenance = mongoose.model('Maintenance', maintenanceSchema);
 
 // Nodemailer transporter
+// For Gmail, you may need to enable "Less secure app access" or use an "App Password"
+// See: https://support.google.com/accounts/answer/6010255
 const transporter = nodemailer.createTransport({
   service: 'gmail', // or your email service
   auth: {
@@ -184,6 +186,10 @@ app.post('/register', async (req, res) => {
   try {
     const { name, email, password, country, gender } = req.body;
 
+    if (!email.endsWith('@gmail.com')) {
+      return res.status(400).json({ message: 'Only @gmail.com emails are allowed' });
+    }
+
     // Check if user exists
     const existingUser = await User.findOne({ email });
     if (existingUser) return res.status(400).json({ message: 'User already exists' });
@@ -213,15 +219,21 @@ app.post('/register', async (req, res) => {
     await user.save();
 
     // Send OTP email
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: 'Verify your email',
-      text: `Your OTP is: ${otp}. It expires in 10 minutes.`
-    });
+    try {
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: 'Verify your email',
+        text: `Your OTP is: ${otp}. It expires in 10 minutes.`
+      });
+    } catch (emailError) {
+      console.error('Error sending OTP email:', emailError);
+      return res.status(500).json({ message: 'Error sending verification email. Please check server configuration.' });
+    }
 
     res.status(201).json({ message: 'User registered. Check your email for OTP.' });
   } catch (error) {
+    console.error('Register error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -284,12 +296,17 @@ app.post('/api/admin/send-otp', async (req, res) => {
     };
 
     // Send OTP email
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: 'Admin Registration OTP',
-      text: `Your OTP for admin registration is: ${otp}. It expires in 10 minutes.`
-    });
+    try {
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: 'Admin Registration OTP',
+        text: `Your OTP for admin registration is: ${otp}. It expires in 10 minutes.`
+      });
+    } catch (emailError) {
+      console.error('Error sending admin OTP email:', emailError);
+      return res.status(500).json({ message: 'Failed to send OTP email. Please check server configuration.' });
+    }
 
     res.json({ message: 'OTP sent successfully to email' });
   } catch (error) {
@@ -463,7 +480,7 @@ app.delete('/api/admin/restricted-words/:id', authenticateAdmin, async (req, res
     await AdminLog.create({
       adminId: req.admin._id,
       action: 'Delete Restricted Word',
-      details: `Deleted word "${word.word}"`
+      details: `Deleted word "${word.word}" `
     });
 
     res.json({ message: 'Word deleted' });
@@ -535,7 +552,7 @@ app.put('/api/admin/approve-admin/:id', authenticateAdmin, async (req, res) => {
     await AdminLog.create({
       adminId: req.admin._id,
       action: approved ? 'Approve Admin' : 'Reject Admin',
-      details: `Admin ${admin.name} (${admin.email}) ${approved ? 'approved' : 'rejected'}`,
+      details: `Admin ${admin.name} (${admin.email}) ${approved ? 'approved' : 'rejected'} `,
       targetUserId: admin._id
     });
 
@@ -881,15 +898,15 @@ io.on('connection', (socket) => {
 
   // Video call events
   socket.on('offer', (data) => {
-    socket.to(data.roomId).emit('offer', data);
+    io.to(data.target).emit('offer', data);
   });
 
   socket.on('answer', (data) => {
-    socket.to(data.roomId).emit('answer', data);
+    io.to(data.target).emit('answer', data);
   });
 
   socket.on('ice-candidate', (data) => {
-    socket.to(data.roomId).emit('ice-candidate', data);
+    io.to(data.target).emit('ice-candidate', data);
   });
 
   // Chat messages
