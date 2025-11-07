@@ -163,8 +163,10 @@ const ChatRoom = ({ user }) => {
     if (socketRef.current) {
         socketRef.current.emit('end-call', { roomId });
     }
-    // Navigate back to waiting room after ending call
-    navigate('/waiting');
+    // Navigate back to waiting room after a short delay to allow cleanup
+    setTimeout(() => {
+      navigate('/waiting');
+    }, 1000);
   };
 
   const handleSkipMatch = () => {
@@ -173,8 +175,8 @@ const ChatRoom = ({ user }) => {
     if (socketRef.current) {
       socketRef.current.emit('skip-chat', { roomId });
     }
-    // Navigate back to waiting room to find new match
-    navigate('/waiting');
+    // Don't navigate immediately, wait for skip-matched event
+    // The useWebRTC hook will handle the new connection
   };
 
   const handleFindNextMatch = () => {

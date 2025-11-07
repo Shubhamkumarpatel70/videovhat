@@ -1,8 +1,7 @@
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import io from 'socket.io-client';
 
 const useWebRTC = (roomId, user) => {
-  const [peers, setPeers] = useState({});
   const [localStream, setLocalStream] = useState(null);
   const [remoteStreams, setRemoteStreams] = useState({});
   const [callEnded, setCallEnded] = useState(false);
@@ -115,11 +114,6 @@ const useWebRTC = (roomId, user) => {
       }
       delete peerConnections.current[userID];
       delete dataChannels.current[userID];
-      setPeers(prevPeers => {
-        const newPeers = { ...prevPeers };
-        delete newPeers[userID];
-        return newPeers;
-      });
       setRemoteStreams(prevStreams => {
         const newStreams = { ...prevStreams };
         delete newStreams[userID];
@@ -137,13 +131,38 @@ const useWebRTC = (roomId, user) => {
       Object.values(peerConnections.current).forEach(pc => pc.close());
       socketRef.current.off('call-ended');
     };
-  }, [roomId]);
+  }, [roomId, user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const createPeerConnection = (userID) => {
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' },
+        // TURN servers for relay when STUN fails
+        {
+          urls: 'turn:turn.anyfirewall.com:443?transport=tcp',
+          username: 'webrtc',
+          credential: 'webrtc'
+        },
+        {
+          urls: 'turn:turn.anyfirewall.com:443?transport=udp',
+          username: 'webrtc',
+          credential: 'webrtc'
+        },
+        // Additional TURN servers
+        {
+          urls: 'turn:turn.bistri.com:80',
+          username: 'homeo',
+          credential: 'homeo'
+        },
+        {
+          urls: 'turn:turn.bistri.com:80?transport=tcp',
+          username: 'homeo',
+          credential: 'homeo'
+        }
       ],
     });
 
@@ -155,6 +174,19 @@ const useWebRTC = (roomId, user) => {
           candidate: event.candidate,
         });
       }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      console.log('ICE connection state:', pc.iceConnectionState);
+      if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+        console.warn('ICE connection failed, attempting restart...');
+        // Attempt ICE restart
+        pc.restartIce();
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log('Peer connection state:', pc.connectionState);
     };
 
     pc.ontrack = event => {
@@ -193,13 +225,17 @@ const useWebRTC = (roomId, user) => {
   const cleanupConnections = () => {
     // Close all existing peer connections
     Object.values(peerConnections.current).forEach(pc => {
-      pc.close();
+      if (pc.signalingState !== 'closed') {
+        pc.close();
+      }
     });
     peerConnections.current = {};
 
     // Close all data channels
     Object.values(dataChannels.current).forEach(dc => {
-      dc.close();
+      if (dc.readyState !== 'closed') {
+        dc.close();
+      }
     });
     dataChannels.current = {};
 
