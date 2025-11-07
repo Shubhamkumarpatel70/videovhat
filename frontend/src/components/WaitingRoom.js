@@ -103,7 +103,7 @@ const normalizeUser = (u) => {
 };
 
 const WaitingRoom = ({ socket, user }) => {
-  console.log('User prop in WaitingRoom:', user);
+  console.log('User prop in WaitingRoom:', user ? JSON.stringify(user, null, 2) : 'No user');
   const navigate = useNavigate();
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
