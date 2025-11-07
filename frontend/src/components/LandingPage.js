@@ -35,32 +35,70 @@ const LandingPage = ({ onUserJoin, isConnected, user, onAdminLogin }) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Demo flow - simulate registration without backend
-    setTimeout(() => {
-      toast.success('Registration successful. Please verify your email.');
-      setShowOtpForm(true);
-      setOtpData({ email: registerData.email, otp: '' });
+    try {
+      const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      console.log('Registering user with data:', registerData);
+
+      const response = await fetch(`${API}/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(registerData),
+      });
+
+      const data = await response.json();
+      console.log('Registration response:', data);
+
+      if (response.ok) {
+        toast.success(data.message);
+        setShowOtpForm(true);
+        setOtpData({ email: registerData.email, otp: '' });
+      } else {
+        toast.error(data.message);
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      toast.error('Registration failed. Please try again.');
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Demo flow - simulate OTP verification
-    setTimeout(() => {
-      if (otpData.otp === '123456') {
-        toast.success('Email verified successfully!');
+    try {
+      const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      console.log('Verifying OTP for email:', otpData.email, 'OTP:', otpData.otp);
+
+      const response = await fetch(`${API}/verify-otp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(otpData),
+      });
+
+      const data = await response.json();
+      console.log('OTP verification response:', data);
+
+      if (response.ok) {
+        toast.success(data.message);
         setShowOtpForm(false);
         setActiveTab('login');
         // Reset register data after successful verification
         setRegisterData({ name: '', email: '', password: '', country: '', gender: '' });
       } else {
-        toast.error('Invalid OTP. Please try again.');
+        toast.error(data.message);
       }
+    } catch (error) {
+      console.error('OTP verification error:', error);
+      toast.error('OTP verification failed. Please try again.');
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   // Fetch testimonials on component mount
