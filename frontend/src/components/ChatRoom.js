@@ -28,12 +28,24 @@ const ChatRoom = ({ user }) => {
         setFindingNext(false);
         setCallEnded(false);
         setRoomId(data.roomId);
+        // Clear messages for new match
+        setMessages([]);
         // The useWebRTC hook will handle the new connection
       });
 
       socketRef.current.on('no-match-found', () => {
         setFindingNext(false);
         navigate('/waiting');
+      });
+
+      // Listen for skip-matched event
+      socketRef.current.on('skip-matched', (data) => {
+        setFindingNext(false);
+        setCallEnded(false);
+        setRoomId(data.roomId);
+        // Clear messages for new match
+        setMessages([]);
+        // The useWebRTC hook will handle the new connection
       });
 
       // Listen for chat messages
@@ -46,6 +58,7 @@ const ChatRoom = ({ user }) => {
       if (socketRef.current) {
         socketRef.current.off('match-found');
         socketRef.current.off('no-match-found');
+        socketRef.current.off('skip-matched');
         socketRef.current.off('chat-message');
       }
     };
@@ -70,9 +83,22 @@ const ChatRoom = ({ user }) => {
   };
 
   const handleEndCall = () => {
+    // Clear current messages when ending call
+    setMessages([]);
     if (socketRef.current) {
         socketRef.current.emit('end-call', { roomId });
     }
+    // Navigate back to waiting room after ending call
+    navigate('/waiting');
+  };
+
+  const handleSkipMatch = () => {
+    // Clear current messages when skipping
+    setMessages([]);
+    if (socketRef.current) {
+      socketRef.current.emit('skip-chat', { roomId });
+    }
+    // Navigate back to waiting room to find new match
     navigate('/waiting');
   };
 
@@ -208,12 +234,20 @@ const ChatRoom = ({ user }) => {
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                       </button>
                     </div>
-                    <button
-                      onClick={handleEndCall}
-                      className="w-full py-3 bg-red-600 hover:bg-red-700 rounded-2xl flex items-center justify-center gap-3 text-white font-semibold transition-all duration-200"
-                    >
-                      End Call
-                    </button>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={handleSkipMatch}
+                        className="flex-1 py-3 bg-yellow-600 hover:bg-yellow-700 rounded-2xl flex items-center justify-center gap-3 text-white font-semibold transition-all duration-200"
+                      >
+                        Skip
+                      </button>
+                      <button
+                        onClick={handleEndCall}
+                        className="flex-1 py-3 bg-red-600 hover:bg-red-700 rounded-2xl flex items-center justify-center gap-3 text-white font-semibold transition-all duration-200"
+                      >
+                        End Call
+                      </button>
+                    </div>
                 </>
             )}
           </div>

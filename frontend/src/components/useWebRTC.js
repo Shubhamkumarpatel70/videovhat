@@ -16,20 +16,40 @@ const useWebRTC = (roomId, user) => {
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then(stream => {
         setLocalStream(stream);
-        socketRef.current.emit('join-room', { roomId, user });
+        // Emit user-join instead of join-room to match server
+        socketRef.current.emit('user-join', { roomId, user });
       })
       .catch(error => {
         console.error('Error accessing media devices.', error);
       });
 
-    socketRef.current.on('all-users', users => {
-      users.forEach(userID => {
-        const pc = createPeerConnection(userID);
-        peerConnections.current[userID] = pc;
+    // Listen for match-found instead of all-users
+    socketRef.current.on('match-found', (data) => {
+      // When match is found, create peer connection for the matched user
+      const matchedUserId = data.matchedUser?.id || data.matchedUser?.socketId;
+      if (matchedUserId) {
+        const pc = createPeerConnection(matchedUserId);
+        peerConnections.current[matchedUserId] = pc;
         const dc = pc.createDataChannel('chat');
-        dataChannels.current[userID] = dc;
+        dataChannels.current[matchedUserId] = dc;
         setupDataChannel(dc);
-      });
+      }
+    });
+
+    // Listen for skip-matched (when user skips and gets a new match)
+    socketRef.current.on('skip-matched', (data) => {
+      // Clean up existing connections before creating new ones
+      cleanupConnections();
+
+      // When skip match is found, create peer connection for the new matched user
+      const matchedUserId = data.matchedUser?.id || data.matchedUser?.socketId;
+      if (matchedUserId) {
+        const pc = createPeerConnection(matchedUserId);
+        peerConnections.current[matchedUserId] = pc;
+        const dc = pc.createDataChannel('chat');
+        dataChannels.current[matchedUserId] = dc;
+        setupDataChannel(dc);
+      }
     });
 
     socketRef.current.on('user-joined', payload => {
@@ -169,6 +189,30 @@ const useWebRTC = (roomId, user) => {
       console.log('Data channel message received:', event.data);
     };
   };
+
+  const cleanupConnections = () => {
+    // Close all existing peer connections
+    Object.values(peerConnections.current).forEach(pc => {
+      pc.close();
+    });
+    peerConnections.current = {};
+
+    // Close all data channels
+    Object.values(dataChannels.current).forEach(dc => {
+      dc.close();
+    });
+    dataChannels.current = {};
+
+    // Clear remote streams
+    setRemoteStreams({});
+  };
+
+  // Cleanup on unmount or when room changes
+  useEffect(() => {
+    return () => {
+      cleanupConnections();
+    };
+  }, [roomId]);
 
   return { socketRef, localStream, remoteStreams, callEnded, setCallEnded };
 };

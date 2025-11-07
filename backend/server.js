@@ -13,7 +13,7 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: ["http://localhost:3000", "https://videovhatfrontend.onrender.com"],
     methods: ["GET", "POST"]
   }
 });
@@ -958,7 +958,23 @@ io.on('connection', (socket) => {
 
   // End call
   socket.on('end-call', (data) => {
+    // Notify the other participant that the call has ended
     socket.to(data.roomId).emit('call-ended');
+
+    // Clean up the room and make the other participant available for new matches
+    const room = activeRooms.get(data.roomId);
+    if (room) {
+      const otherParticipant = room.participants.find(id => id !== socket.id);
+      if (otherParticipant) {
+        // Add the other participant back to available users
+        const otherUser = activeUsers.get(otherParticipant);
+        if (otherUser) {
+          activeUsers.set(otherParticipant, otherUser);
+          io.emit('user-list-updated', Array.from(activeUsers.values()));
+        }
+      }
+      activeRooms.delete(data.roomId);
+    }
   });
 
   // Skip chat - find new match
