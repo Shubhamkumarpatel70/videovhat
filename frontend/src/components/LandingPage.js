@@ -9,8 +9,7 @@ const LandingPage = ({ onUserJoin, isConnected, user, onAdminLogin }) => {
   const [activeTab, setActiveTab] = useState('login');
   const [loginData, setLoginData] = useState({ email: '', password: '' });
   const [registerData, setRegisterData] = useState({ name: '', email: '', password: '', country: '', gender: '' });
-  const [otpData, setOtpData] = useState({ email: '', otp: '' });
-  const [showOtpForm, setShowOtpForm] = useState(false);
+
   const [isLoading, setIsLoading] = useState(false);
   const [testimonials, setTestimonials] = useState([]);
   const [currentTestimonialIndex, setCurrentTestimonialIndex] = useState(0);
@@ -24,11 +23,6 @@ const LandingPage = ({ onUserJoin, isConnected, user, onAdminLogin }) => {
   const handleLoginInput = (e) => {
     const { name, value } = e.target;
     setLoginData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleOtpInput = (e) => {
-    const { name, value } = e.target;
-    setOtpData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleRegister = async (e) => {
@@ -52,50 +46,15 @@ const LandingPage = ({ onUserJoin, isConnected, user, onAdminLogin }) => {
 
       if (response.ok) {
         toast.success(data.message);
-        setShowOtpForm(true);
-        setOtpData({ email: registerData.email, otp: '' });
+        setActiveTab('login');
+        // Reset register data after successful registration
+        setRegisterData({ name: '', email: '', password: '', country: '', gender: '' });
       } else {
         toast.error(data.message);
       }
     } catch (error) {
       console.error('Registration error:', error);
       toast.error('Registration failed. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleVerifyOtp = async (e) => {
-    e.preventDefault();
-    setIsLoading(true);
-
-    try {
-      const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-      console.log('Verifying OTP for email:', otpData.email, 'OTP:', otpData.otp);
-
-      const response = await fetch(`${API}/verify-otp`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(otpData),
-      });
-
-      const data = await response.json();
-      console.log('OTP verification response:', data);
-
-      if (response.ok) {
-        toast.success(data.message);
-        setShowOtpForm(false);
-        setActiveTab('login');
-        // Reset register data after successful verification
-        setRegisterData({ name: '', email: '', password: '', country: '', gender: '' });
-      } else {
-        toast.error(data.message);
-      }
-    } catch (error) {
-      console.error('OTP verification error:', error);
-      toast.error('OTP verification failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -338,52 +297,27 @@ const LandingPage = ({ onUserJoin, isConnected, user, onAdminLogin }) => {
           {!user ? (
             <div className="space-y-4 lg:space-y-6 px-6 pb-6">
               {/* Tab Navigation */}
-              {!showOtpForm && (
-                <div className="flex bg-gray-100 rounded-lg p-1">
-                  <button
-                    onClick={() => setActiveTab('login')}
-                    className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
-                      activeTab === 'login' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    Login
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('register')}
-                    className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
-                      activeTab === 'register' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    Register
-                  </button>
-                </div>
-              )}
-
-              {/* OTP Verification Form */}
-              {showOtpForm && (
-                <motion.form onSubmit={handleVerifyOtp} className="space-y-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
-                  <div className="text-center">
-                    <Mail size={48} className="text-blue-500 mx-auto mb-4" />
-                    <h3 className="text-gray-900 text-lg font-semibold mb-2">Verify Your Email</h3>
-                    <p className="text-gray-600 text-sm mb-4">We've sent a 6-digit OTP to {otpData.email}</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label htmlFor="otp" className="text-gray-900 font-medium text-sm">Enter OTP</label>
-                    <input id="otp" name="otp" value={otpData.otp} onChange={handleOtpInput} placeholder="123456" className="w-full px-3 py-2 border border-gray-300 rounded-md text-center text-2xl tracking-widest bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent" maxLength="6" />
-                  </div>
-
-                  <motion.button type="submit" disabled={isLoading} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md font-medium transition-colors flex items-center justify-center gap-2">
-                    {isLoading ? 'Verifying...' : 'Verify OTP'}
-                    <CheckCircle size={16} />
-                  </motion.button>
-
-                  <button type="button" onClick={() => setShowOtpForm(false)} className="text-gray-500 text-sm hover:text-gray-700">Back to Register</button>
-                </motion.form>
-              )}
+              <div className="flex bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setActiveTab('login')}
+                  className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+                    activeTab === 'login' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Login
+                </button>
+                <button
+                  onClick={() => setActiveTab('register')}
+                  className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+                    activeTab === 'register' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Register
+                </button>
+              </div>
 
               {/* Login Tab */}
-              {activeTab === 'login' && !showOtpForm && (
+              {activeTab === 'login' && (
                 <motion.form onSubmit={handleLogin} className="space-y-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
                   <div className="space-y-2">
                     <label htmlFor="loginEmail" className="text-gray-900 font-medium text-sm">Email</label>
@@ -402,7 +336,7 @@ const LandingPage = ({ onUserJoin, isConnected, user, onAdminLogin }) => {
               )}
 
               {/* Register Tab */}
-              {activeTab === 'register' && !showOtpForm && (
+              {activeTab === 'register' && (
                 <motion.form onSubmit={handleRegister} className="space-y-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
                   <div className="space-y-2">
                     <label htmlFor="registerName" className="text-gray-900 font-medium text-sm">Name</label>

@@ -202,19 +202,14 @@ app.post('/register', async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Generate OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
-    // Create user
+    // Create user (directly verified)
     const user = new User({
       name,
       email,
       password: hashedPassword,
       country,
       gender,
-      otp,
-      otpExpires
+      isVerified: true
     });
 
     await user.save();
@@ -223,20 +218,7 @@ app.post('/register', async (req, res) => {
     user.socketId = user._id.toString();
     await user.save();
 
-    // Send OTP email
-    try {
-      await transporter.sendMail({
-        from: process.env.EMAIL_USER,
-        to: email,
-        subject: 'Verify your email',
-        text: `Your OTP is: ${otp}. It expires in 10 minutes.`
-      });
-    } catch (emailError) {
-      console.error('Error sending OTP email:', emailError);
-      return res.status(500).json({ message: 'Error sending verification email. Please check server configuration.' });
-    }
-
-    res.status(201).json({ message: 'User registered. Check your email for OTP.' });
+    res.status(201).json({ message: 'User registered successfully. Please login.' });
   } catch (error) {
     console.error('Register error:', error);
     res.status(500).json({ message: 'Server error' });
