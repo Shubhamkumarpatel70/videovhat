@@ -10,7 +10,7 @@ const useWebRTC = (roomId, user) => {
   const dataChannels = useRef({});
 
   useEffect(() => {
-    socketRef.current = io('http://localhost:5000'); // Replace with your signaling server URL
+    socketRef.current = io('https://videovhatbackend.onrender.com'); // Production signaling server URL
 
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then(stream => {
