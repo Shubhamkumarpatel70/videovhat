@@ -5,7 +5,6 @@ const useWebRTC = (roomId, user) => {
   const [peers, setPeers] = useState({});
   const [localStream, setLocalStream] = useState(null);
   const [remoteStreams, setRemoteStreams] = useState({});
-  const [messages, setMessages] = useState([]);
   const [callEnded, setCallEnded] = useState(false);
   const socketRef = useRef();
   const peerConnections = useRef({});
@@ -166,23 +165,12 @@ const useWebRTC = (roomId, user) => {
     };
 
     dc.onmessage = event => {
-      setMessages(prevMessages => [...prevMessages, JSON.parse(event.data)]);
+      // Messages are now handled in ChatRoom component via socket
+      console.log('Data channel message received:', event.data);
     };
   };
 
-  const sendMessage = (message) => {
-    const messageData = {
-      user,
-      message,
-      timestamp: new Date(),
-    };
-    setMessages(prevMessages => [...prevMessages, messageData]);
-    Object.values(dataChannels.current).forEach(dc => {
-      dc.send(JSON.stringify(messageData));
-    });
-  };
-
-  return { socketRef, localStream, remoteStreams, messages, sendMessage, callEnded, setCallEnded };
+  return { socketRef, localStream, remoteStreams, callEnded, setCallEnded };
 };
 
 export default useWebRTC;

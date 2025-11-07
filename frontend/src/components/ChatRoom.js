@@ -9,7 +9,8 @@ const ChatRoom = ({ user }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [roomId, setRoomId] = useState(location.state?.roomId);
-  const { socketRef, localStream, remoteStreams, messages, sendMessage, callEnded, setCallEnded } = useWebRTC(roomId, user);
+  const { socketRef, localStream, remoteStreams, callEnded, setCallEnded } = useWebRTC(roomId, user);
+  const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [findingNext, setFindingNext] = useState(false);
   const localVideoRef = useRef();
@@ -34,19 +35,36 @@ const ChatRoom = ({ user }) => {
         setFindingNext(false);
         navigate('/waiting');
       });
+
+      // Listen for chat messages
+      socketRef.current.on('chat-message', (messageData) => {
+        setMessages(prevMessages => [...prevMessages, messageData]);
+      });
     }
 
     return () => {
       if (socketRef.current) {
         socketRef.current.off('match-found');
         socketRef.current.off('no-match-found');
+        socketRef.current.off('chat-message');
       }
     };
   }, [socketRef, navigate, setCallEnded]);
 
   const handleSendMessage = () => {
     if (newMessage.trim()) {
-      sendMessage(newMessage);
+      const messageData = {
+        user,
+        message: newMessage,
+        timestamp: new Date(),
+      };
+      setMessages(prevMessages => [...prevMessages, messageData]);
+
+      // Send via socket to remote user
+      if (socketRef.current) {
+        socketRef.current.emit('chat-message', { roomId, messageData });
+      }
+
       setNewMessage('');
     }
   };
@@ -80,34 +98,40 @@ const ChatRoom = ({ user }) => {
         {/* Video Section */}
         <div className="lg:col-span-2 flex flex-col gap-6">
           <div className="bg-white rounded-3xl overflow-hidden relative flex-1 min-h-[500px] shadow-lg border border-gray-200">
-            <div className="grid grid-cols-2 h-full">
-              {/* Remote Videos */}
-              {Object.keys(remoteStreams).map(key => (
-                <div key={key} className="relative flex items-center justify-center border-r border-gray-200">
-                  <video
-                    ref={el => (remoteVideosRef.current[key] = el)}
-                    autoPlay
-                    playsInline
-                    className="w-full h-full object-cover"
-                    onLoadedMetadata={() => {
-                      if (remoteVideosRef.current[key]) {
-                        remoteVideosRef.current[key].srcObject = remoteStreams[key];
-                      }
-                    }}
-                  />
-                </div>
-              ))}
-
-              {/* Local Video */}
-              <div className="relative flex items-center justify-center">
+            {/* Main Remote Video */}
+            {Object.keys(remoteStreams).length > 0 ? (
+              Object.keys(remoteStreams).map(key => (
                 <video
-                  ref={localVideoRef}
+                  key={key}
+                  ref={el => (remoteVideosRef.current[key] = el)}
                   autoPlay
-                  muted
                   playsInline
                   className="w-full h-full object-cover"
+                  onLoadedMetadata={() => {
+                    if (remoteVideosRef.current[key]) {
+                      remoteVideosRef.current[key].srcObject = remoteStreams[key];
+                    }
+                  }}
                 />
+              ))
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                <div className="text-center text-gray-500">
+                  <div className="text-6xl mb-4">📹</div>
+                  <p className="text-lg">Waiting for other user to join...</p>
+                </div>
               </div>
+            )}
+
+            {/* Local Video - Picture in Picture */}
+            <div className="absolute top-4 right-4 w-48 h-36 bg-black rounded-lg overflow-hidden shadow-lg border-2 border-white">
+              <video
+                ref={localVideoRef}
+                autoPlay
+                muted
+                playsInline
+                className="w-full h-full object-cover"
+              />
             </div>
           </div>
         </div>

@@ -26,11 +26,6 @@ app.use(express.json());
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/videochat', {
   useNewUrlParser: true,
   useUnifiedTopology: true,
-}).then(() => {
-  console.log('Connected to MongoDB');
-}).catch((error) => {
-  console.error('MongoDB connection error:', error);
-  process.exit(1);
 });
 
 // User Schema
@@ -134,17 +129,13 @@ const maintenanceSchema = new mongoose.Schema({
 const Maintenance = mongoose.model('Maintenance', maintenanceSchema);
 
 // Nodemailer transporter
-// For production, using Gmail SMTP with proper configuration
+// For Gmail, you may need to enable "Less secure app access" or use an "App Password"
+// See: https://support.google.com/accounts/answer/6010255
 const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // true for 465, false for other ports
+  service: 'gmail', // or your email service
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
-  },
-  tls: {
-    rejectUnauthorized: false
   }
 });
 
@@ -969,6 +960,13 @@ io.on('connection', (socket) => {
     } catch (error) {
       console.error('Error handling send-message:', error);
     }
+  });
+
+  // Chat message from room
+  socket.on('chat-message', (data) => {
+    const { roomId, messageData } = data;
+    // Broadcast the message to all users in the room
+    socket.to(roomId).emit('chat-message', messageData);
   });
 
   // End call
